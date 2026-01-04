@@ -129,8 +129,13 @@ class SyntheticTracker:
         # Prune dead tracks
         self.tracks = [t for t in self.tracks if t.misses <= self.config.max_misses]
         
+        # Mark tracks as confirmed
+        for t in self.tracks:
+            if not t.confirmed and t.hits >= self.config.min_hits:
+                t.confirmed = True
+        
         # Filter for display
-        display_tracks = [t for t in self.tracks if t.confidence >= self.config.min_confidence]
+        display_tracks = [t for t in self.tracks if t.confirmed and t.confidence >= self.config.min_confidence]
         
         health = RadarHealth(
             fps=20.0,

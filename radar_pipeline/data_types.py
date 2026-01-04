@@ -50,6 +50,9 @@ class Track:
     # Track for static classification
     low_velocity_frames: int = 0
     
+    # Once confirmed, track stays visible until deleted
+    confirmed: bool = False
+    
     @property
     def range(self) -> float:
         """Distance from radar to track."""

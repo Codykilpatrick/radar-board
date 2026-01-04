@@ -284,7 +284,8 @@ class TrackManager(threading.Thread):
             last_update=timestamp,
             state=state,
             covariance=covariance,
-            low_velocity_frames=0
+            low_velocity_frames=0,
+            confirmed=False  # Must reach min_hits before displaying
         )
         
         self._next_track_id += 1
@@ -383,10 +384,15 @@ class TrackManager(threading.Thread):
         else:
             fps = 0
         
-        # Filter tracks by minimum confidence for display
+        # Mark tracks as confirmed once they reach min_hits
+        for track in self._tracks:
+            if not track.confirmed and track.hits >= self.config.min_hits:
+                track.confirmed = True
+        
+        # Filter tracks: must be confirmed AND meet confidence threshold
         display_tracks = [
             track for track in self._tracks
-            if track.confidence >= self.config.min_confidence
+            if track.confirmed and track.confidence >= self.config.min_confidence
         ]
         
         # Create health metrics

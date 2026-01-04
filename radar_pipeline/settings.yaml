@@ -37,6 +37,10 @@ association:
 # -----------------------------------------------------------------------------
 # Controls when tracks appear, persist, and disappear
 tracking:
+  # Confirmation before display
+  min_hits: 3           # Require N consecutive detections before showing track
+                        # Higher = fewer blips, but slower to appear (3-5 recommended)
+  
   # Confidence thresholds
   min_confidence: 0.3   # Minimum confidence to DISPLAY a track (0-1)
   initial_confidence: 0.2  # Starting confidence for new tracks
