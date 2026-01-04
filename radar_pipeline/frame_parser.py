@@ -200,6 +200,18 @@ class FrameParser(threading.Thread):
             detections.append(detection)
             self._detections_total += 1
         
+        # Debug output for SNR and detection values
+        if self.config.debug_detections and raw_detections:
+            snr_list = [snr_values[i] if i < len(snr_values) else 0.0 for i in range(len(raw_detections))]
+            if snr_list:
+                snr_min, snr_max = min(snr_list), max(snr_list)
+                snr_mean = sum(snr_list) / len(snr_list)
+            else:
+                snr_min = snr_max = snr_mean = 0.0
+            
+            print(f"[Detect] raw={len(raw_detections)} passed={len(detections)} | "
+                  f"SNR: min={snr_min:.1f} max={snr_max:.1f} mean={snr_mean:.1f} dB")
+        
         return detections
     
     def stop(self):

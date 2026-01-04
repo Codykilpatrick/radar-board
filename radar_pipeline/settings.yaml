@@ -1,0 +1,84 @@
+# =============================================================================
+# Radar Pipeline Configuration
+# =============================================================================
+# Edit this file to tune tracking parameters without modifying code.
+# Restart the pipeline after making changes.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Serial Connection
+# -----------------------------------------------------------------------------
+serial:
+  port: "/dev/tty.usbserial-00ED1D3E1"
+  baudrate: 921600
+
+# -----------------------------------------------------------------------------
+# Detection Filtering
+# -----------------------------------------------------------------------------
+# These filters are applied to raw radar detections BEFORE tracking
+filtering:
+  min_range: 0.25       # Ignore detections closer than this (meters)
+  max_range: 8.0        # Ignore detections farther than this (meters)
+  fov_angle: 60.0       # Half-angle of FOV in degrees (±60° = 120° total)
+  min_snr: 0.0          # NOTE: Your radar doesn't output SNR, so this must be 0
+                        # To filter false tracks, use confidence settings below instead
+
+# -----------------------------------------------------------------------------
+# Track Association
+# -----------------------------------------------------------------------------
+# How detections are matched to existing tracks
+association:
+  gate: 0.75            # Max distance to associate detection with track (meters)
+                        # Smaller = fewer false tracks, but may lose fast-moving targets
+                        # Recommended: 0.5-0.75 for walking, 1.0 for running
+
+# -----------------------------------------------------------------------------
+# Track Lifecycle
+# -----------------------------------------------------------------------------
+# Controls when tracks appear, persist, and disappear
+tracking:
+  # Confidence thresholds
+  min_confidence: 0.3   # Minimum confidence to DISPLAY a track (0-1)
+  initial_confidence: 0.2  # Starting confidence for new tracks
+  confidence_increment: 0.15  # Confidence gained per detection hit
+  confidence_decay: 0.05     # Confidence lost per missed frame (faster decay = less ghost tracks)
+  
+  # Track deletion
+  max_misses: 15        # Frames without detection before track is deleted
+  
+  # Static object classification
+  static_velocity_threshold: 0.1  # Below this velocity = static (m/s)
+  static_frames_required: 20      # Frames at low velocity to classify as static
+
+# -----------------------------------------------------------------------------
+# Kalman Filter Tuning
+# -----------------------------------------------------------------------------
+# Controls smoothing and prediction behavior
+kalman:
+  process_noise: 0.5    # Higher = trust measurements more, allow faster acceleration
+                        # Lower = smoother tracks, slower to respond to changes
+  measurement_noise: 0.05  # Radar position uncertainty (meters, ~5cm typical)
+  frame_period: 0.05    # Expected time between frames (seconds, 0.05 = 20 Hz)
+
+# -----------------------------------------------------------------------------
+# Visualization
+# -----------------------------------------------------------------------------
+visualization:
+  update_rate: 20       # Display refresh rate (Hz)
+  trail_length: 50      # Number of history points to show in trail
+
+# -----------------------------------------------------------------------------
+# Occupancy Grid (experimental)
+# -----------------------------------------------------------------------------
+occupancy_grid:
+  enabled: false        # Set to true to enable ground-plane obstacle map
+  resolution: 0.1       # Meters per cell
+  size: [100, 100]      # Grid dimensions in cells
+
+# -----------------------------------------------------------------------------
+# Debug Output
+# -----------------------------------------------------------------------------
+debug:
+  tracking: false       # Print track association info
+  detections: false     # Print raw detection counts and Z values
+

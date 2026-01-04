@@ -91,7 +91,7 @@ class RenderEngine(QtWidgets.QMainWindow):
                 background-color: #141420;
                 color: #e0e0e0;
                 padding: 12px;
-                font-family: 'JetBrains Mono', 'SF Mono', 'Consolas', monospace;
+                font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
                 font-size: 11px;
                 border: 1px solid #2a2a3a;
                 border-radius: 6px;
