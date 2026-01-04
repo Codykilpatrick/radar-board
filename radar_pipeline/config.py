@@ -27,6 +27,7 @@ class PipelineConfig:
     # Tracking parameters
     association_gate: float = 0.5  # max distance for association (meters)
     min_confidence: float = 0.4  # minimum confidence to display
+    min_hits: int = 3  # require N consecutive hits before showing track
     max_misses: int = 15  # frames before track deletion
     static_velocity_threshold: float = 0.1  # m/s
     static_frames_required: int = 20  # frames at low velocity to classify static
@@ -120,6 +121,7 @@ def load_yaml_config(yaml_path: Optional[str] = None) -> PipelineConfig:
         
         # Tracking
         if 'tracking' in data:
+            config_dict['min_hits'] = data['tracking'].get('min_hits', PipelineConfig.min_hits)
             config_dict['min_confidence'] = data['tracking'].get('min_confidence', PipelineConfig.min_confidence)
             config_dict['initial_confidence'] = data['tracking'].get('initial_confidence', PipelineConfig.initial_confidence)
             config_dict['confidence_increment'] = data['tracking'].get('confidence_increment', PipelineConfig.confidence_increment)
