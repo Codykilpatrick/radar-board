@@ -90,16 +90,23 @@ class SimpleTracker:
                 hits=1, misses=0,
                 history=[(det.x, det.y, det.z, timestamp)],
                 last_update=timestamp,
-                state=state, covariance=cov
+                state=state, covariance=cov,
+                confirmed=False  # Must reach min_hits before displaying
             )
             self.tracks.append(track)
             self.next_id += 1
-        
-        # 6. Prune dead tracks
+
+        # 6. Mark tracks as confirmed once they reach min_hits
+        for track in self.tracks:
+            if not track.confirmed and track.hits >= self.config.min_hits:
+                track.confirmed = True
+
+        # 7. Prune dead tracks
         self.tracks = [t for t in self.tracks if t.misses <= self.config.max_misses]
-        
-        # Return confirmed tracks
-        return [t for t in self.tracks if t.confidence >= self.config.min_confidence]
+
+        # Return confirmed tracks (must be confirmed AND meet confidence threshold)
+        return [t for t in self.tracks
+                if t.confirmed and t.confidence >= self.config.min_confidence]
 
 
 def test_single_moving_target():

@@ -44,7 +44,7 @@ association:
 tracking:
   # Confirmation before display
   min_hits: 1           # Require N consecutive detections before showing track
-                        # 1 = instant, 3-5 = fewer false tracks but slower
+                        # 1 = instant, 2 = balanced, 3-5 = fewer false tracks but slower
 
   # Confidence thresholds (tuned for fast acquisition)
   min_confidence: 0.3   # Minimum confidence to DISPLAY a track (0-1)

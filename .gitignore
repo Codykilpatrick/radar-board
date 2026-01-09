@@ -1,3 +1,5 @@
 *.pyc
 __pycache__/
 recordings/
+
+python3 -m radar_pipeline.main --source file:recordings/session_20260109_104404/radar.jsonl --play-video recordings/session_20260109_104404/video
