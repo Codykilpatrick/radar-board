@@ -40,7 +40,7 @@ See [`radar_pipeline/README.md`](radar_pipeline/README.md) for full documentatio
 ### 1. Install Dependencies
 
 ```bash
-pip install pyqtgraph pyserial numpy scipy PyQt6 PyOpenGL
+pip install pyqtgraph pyserial numpy scipy PyQt6 PyOpenGL pyyaml
 ```
 
 ### 2. Configure Radar
@@ -67,14 +67,37 @@ python3 visualize_radar_3d.py
 - **Connection**: USB serial at 921600 baud
 - **Default Port**: `/dev/tty.usbserial-00ED1D3E1` (macOS)
 
+## Offline Development
+
+Develop and test without physical radar hardware:
+
+```bash
+# List available synthetic scenarios
+python3 -m radar_pipeline.main --list-scenarios
+
+# Run with synthetic data
+python3 -m radar_pipeline.main --source synthetic:multi      # Multiple targets
+python3 -m radar_pipeline.main --source synthetic:dropout    # Test track coasting
+python3 -m radar_pipeline.main --source synthetic:clutter    # Static + moving
+
+# Record synthetic data for reproducible testing
+python3 -m radar_pipeline.main --source synthetic:crossing --record test.jsonl
+
+# Playback at different speeds
+python3 -m radar_pipeline.main --source file:test.jsonl --speed 0.5  # Half speed
+python3 -m radar_pipeline.main --source file:test.jsonl --speed 2.0  # Double speed
+```
+
 ## Testing
 
 ```bash
 # Run all unit tests
 python3 radar_pipeline/tests/run_all_tests.py
 
-# Visual test with synthetic targets
-python3 radar_pipeline/tests/visual_test.py 4  # Dropout/coasting test
+# Visual tests with synthetic targets
+python3 radar_pipeline/tests/visual_test.py --list           # List scenarios
+python3 radar_pipeline/tests/visual_test.py crossing         # By name
+python3 radar_pipeline/tests/visual_test.py 4                # Dropout/coasting test
 ```
 
 ## Project Structure
@@ -90,8 +113,11 @@ radar-board/
 ├── visualize_radar_qt.py        # Simple 2D visualizer
 └── radar_pipeline/              # Multi-threaded pipeline
     ├── README.md                # Pipeline documentation
-    ├── main.py                  # Entry point
+    ├── main.py                  # Entry point with CLI
     ├── config.py                # Configuration
+    ├── data_source.py           # Data source abstraction
+    ├── recorder.py              # JSONL recording
+    ├── scenarios.py             # Synthetic test scenarios
     ├── serial_reader.py         # Serial reader thread
     ├── frame_parser.py          # Frame parser thread
     ├── track_manager.py         # Kalman tracking thread
@@ -111,6 +137,8 @@ radar-board/
 - **Track Management**: Persistent object tracking with coasting through dropouts
 - **Static/Dynamic Classification**: Automatic classification of stationary vs moving objects
 - **Multi-threaded Architecture**: Serial reading doesn't block visualization
+- **Offline Development**: Synthetic data generation and session recording/playback
+- **Multiple Data Sources**: Live radar, recorded files, or synthetic patterns
 
 ## License
 
