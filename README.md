@@ -40,16 +40,28 @@ See [`radar_pipeline/README.md`](radar_pipeline/README.md) for full documentatio
 ### 1. Install Dependencies
 
 ```bash
-pip install pyqtgraph pyserial numpy scipy PyQt6 PyOpenGL pyyaml
+pip install pyqtgraph pyserial numpy scipy PyQt6 PyOpenGL pyyaml opencv-python
 ```
 
 ### 2. Configure Radar
 
+Choose a radar profile based on your use case:
+
+| Profile | Max Velocity | Clutter Removal | Best For |
+|---------|-------------|-----------------|----------|
+| `profile_2d.cfg` | 3 m/s | ON | Close-range, slow targets |
+| `profile_fast.cfg` | 9.7 m/s (22 mph) | ON | Running, jogging, approaching targets |
+| `profile_nofilter.cfg` | 9.7 m/s (22 mph) | OFF | Parallel motion, static objects |
+
 Send configuration to the radar:
 
 ```bash
-python3 send_config.py profile_2d.cfg
+python3 send_config.py profile_fast.cfg    # Recommended for most uses
+python3 send_config.py profile_nofilter.cfg # For parallel motion detection
+python3 send_config.py profile_2d.cfg       # Conservative/original
 ```
+
+**Note:** FMCW radar measures radial velocity (toward/away). Targets moving parallel to the radar have near-zero radial velocity and may be filtered out with clutter removal ON.
 
 ### 3. Run Visualization
 
@@ -129,19 +141,24 @@ python3 radar_pipeline/tests/visual_test.py 4                # Dropout/coasting 
 ```
 radar-board/
 ├── README.md                    # This file
-├── profile_2d.cfg               # Radar configuration
+├── profile_2d.cfg               # Radar config (conservative)
+├── profile_fast.cfg             # Radar config (high speed)
+├── profile_nofilter.cfg         # Radar config (no clutter filter)
 ├── send_config.py               # Send config to radar
 ├── read_radar.py                # Basic radar data reader
 ├── test_radar.py                # Radar connection test
 ├── visualize_radar_3d.py        # Simple 3D visualizer
 ├── visualize_radar_qt.py        # Simple 2D visualizer
+├── recordings/                  # Recorded sessions (gitignored)
 └── radar_pipeline/              # Multi-threaded pipeline
     ├── README.md                # Pipeline documentation
     ├── main.py                  # Entry point with CLI
     ├── config.py                # Configuration
     ├── data_source.py           # Data source abstraction
     ├── recorder.py              # JSONL recording
+    ├── video_recorder.py        # Synchronized video recording
     ├── scenarios.py             # Synthetic test scenarios
+    ├── metrics.py               # Tracking performance metrics
     ├── serial_reader.py         # Serial reader thread
     ├── frame_parser.py          # Frame parser thread
     ├── track_manager.py         # Kalman tracking thread
