@@ -24,18 +24,18 @@ class PipelineConfig:
     fov_angle: float = 60.0  # degrees (half angle, ±60° from center)
     min_snr: float = 0.0  # dB - NOTE: many radars don't output SNR
     
-    # Tracking parameters
-    association_gate: float = 0.5  # max distance for association (meters)
-    min_confidence: float = 0.4  # minimum confidence to display
-    min_hits: int = 3  # require N consecutive hits before showing track
-    max_misses: int = 15  # frames before track deletion
+    # Tracking parameters (tuned for fast acquisition / CIWS-style)
+    association_gate: float = 0.75  # max distance for association (meters)
+    min_confidence: float = 0.3  # minimum confidence to display
+    min_hits: int = 1  # require N consecutive hits before showing track (1=instant)
+    max_misses: int = 10  # frames before track deletion
     static_velocity_threshold: float = 0.1  # m/s
     static_frames_required: int = 20  # frames at low velocity to classify static
-    
-    # Track lifecycle
-    initial_confidence: float = 0.1  # start low, require confirmations
+
+    # Track lifecycle (set initial >= min for instant acquisition)
+    initial_confidence: float = 0.4  # start high for instant acquisition
     confidence_increment: float = 0.15  # confidence gained per hit
-    confidence_decay: float = 0.03  # decay per missed frame
+    confidence_decay: float = 0.08  # faster decay to clear ghost tracks
     
     # Kalman filter tuning
     process_noise: float = 0.5  # higher = trust measurements more

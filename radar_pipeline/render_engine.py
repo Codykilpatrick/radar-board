@@ -243,33 +243,43 @@ class RenderEngine(QtWidgets.QMainWindow):
         """Render tracked objects."""
         if not tracks:
             self.scatter.setData(
-                pos=np.zeros((1, 3)), 
-                color=(1, 0, 0, 0), 
+                pos=np.zeros((1, 3)),
+                color=(1, 0, 0, 0),
                 size=0
             )
             return
-        
+
         # Prepare scatter data
         positions = np.array([[t.x, t.y, t.z] for t in tracks])
         colors = []
         sizes = []
-        
+
         for t in tracks:
-            # Color by classification or range, with coasting indication
+            # Color by threat level for approaching targets, otherwise by classification
             if t.classification == ObjectClass.STATIC:
                 color = (0.6, 0.6, 0.7, 0.9)
             elif t.misses > 0:
                 # Coasting - fade to purple/magenta to indicate predicted position
                 fade = max(0.3, 1.0 - t.misses * 0.1)
                 color = (0.8, 0.3, 0.8, fade)  # Magenta, fading
+            elif t.is_threat:
+                # Threat coloring based on threat score
+                threat = t.threat_score / 100.0
+                # Red/orange gradient for threats
+                color = (1.0, 0.3 * (1 - threat), 0.0, 0.95)
+            elif t.is_approaching:
+                # Yellow/orange for approaching but not yet threatening
+                color = (1.0, 0.7, 0.2, 0.9)
             else:
                 color = color_by_range(t.range)
             colors.append(color)
-            
-            # Size based on confidence, smaller when coasting
+
+            # Size based on confidence and threat, smaller when coasting
             base_size = 12
             if t.misses > 0:
                 size = max(6, base_size - t.misses)  # Shrink while coasting
+            elif t.is_threat:
+                size = base_size + 8 + int(t.threat_score / 10)  # Larger for threats
             else:
                 size = base_size + int(t.confidence * 8)
             sizes.append(size)
@@ -393,9 +403,9 @@ class RenderEngine(QtWidgets.QMainWindow):
             display_fps = len(self._fps_times) / elapsed if elapsed > 0 else 0
         else:
             display_fps = 0
-        
+
         health = state.radar_health
-        
+
         # Header
         info = f"<span style='color:#00cccc;'>■</span> Frame: {state.frame_number}  "
         info += f"<span style='color:#88cc88;'>●</span> Radar FPS: {health.fps:.1f}  "
@@ -403,44 +413,85 @@ class RenderEngine(QtWidgets.QMainWindow):
         info += f"<span style='color:#cc8888;'>▲</span> Tracks: {len(state.tracks)}  "
         info += f"<span style='color:#888888;'>◆</span> Static: {len(state.static_objects)}"
         info += "<br/>"
+
+        # Threat summary - show highest threat prominently
+        highest_threat = state.get_highest_threat()
+        if highest_threat and highest_threat.threat_score > 10:
+            threat_color = "#ff4444" if highest_threat.threat_score > 50 else "#ffaa44"
+            tti = highest_threat.time_to_intercept
+            tti_str = f"{tti:.1f}s" if tti < 100 else "---"
+            cv = highest_threat.closing_velocity
+            cv_str = f"{cv:+.1f}" if abs(cv) < 100 else "---"
+            info += f"<span style='color:{threat_color};'>⚠ THREAT [{highest_threat.track_id}]</span> "
+            info += f"Score:<span style='color:{threat_color};'>{highest_threat.threat_score:.0f}</span>  "
+            info += f"TTI:<span style='color:{threat_color};'>{tti_str}</span>  "
+            info += f"Cv:<span style='color:{threat_color};'>{cv_str}</span>m/s"
+            info += "<br/>"
+        else:
+            info += "<span style='color:#446644;'>○ No active threats</span><br/>"
+
         info += "<span style='color:#444455;'>─" * 40 + "</span><br/>"
-        
-        # Track details (up to 6)
-        for i in range(6):
+
+        # Track details (up to 5, leaving room for threat header)
+        for i in range(5):
             if i < len(state.tracks):
                 t = state.tracks[i]
-                
-                # Icon and color based on status
+
+                # Icon and color based on threat/status
                 if t.classification == ObjectClass.STATIC:
                     cls_icon = "◆"
                     cls_color = "#888888"
+                elif t.is_threat:
+                    cls_icon = "⚠"
+                    cls_color = "#ff6644"
+                elif t.is_approaching:
+                    cls_icon = "→"
+                    cls_color = "#ffaa44"
                 elif t.misses > 0:
                     cls_icon = "◌"  # Hollow circle for coasting
                     cls_color = "#cc66cc"  # Magenta
                 else:
                     cls_icon = "●"
                     cls_color = "#00cccc"
-                
-                # Status indicator
-                if t.misses > 0:
-                    status = f"<span style='color:#cc66cc;'>~{t.misses}</span>"
-                else:
-                    status = f"<span style='color:#88cc88;'>✓{t.hits}</span>"
-                
+
+                # Build track info line
                 info += f"<span style='color:{cls_color};'>{cls_icon}</span> "
                 info += f"<span style='color:#aaaaaa;'>[{t.track_id:3d}]</span> "
                 info += f"<span style='color:#ffffff;'>{t.range:.2f}m</span>  "
-                info += f"Az:<span style='color:#88aacc;'>{t.azimuth_deg:+5.0f}°</span>  "
-                info += f"v:<span style='color:#ccaa88;'>{t.velocity_magnitude:.2f}</span>m/s  "
-                info += f"{status}  "
-                info += f"c:<span style='color:#88cc88;'>{t.confidence:.2f}</span>"
+
+                # Show closing velocity for dynamic tracks
+                if t.classification != ObjectClass.STATIC:
+                    cv = t.closing_velocity
+                    if cv > 0.5:
+                        cv_color = "#ff6644"  # Approaching fast
+                    elif cv > 0.1:
+                        cv_color = "#ffaa44"  # Approaching slow
+                    elif cv < -0.1:
+                        cv_color = "#44aa44"  # Receding
+                    else:
+                        cv_color = "#888888"  # Stationary
+                    info += f"Cv:<span style='color:{cv_color};'>{cv:+.1f}</span>  "
+
+                    # TTI for approaching targets
+                    tti = t.time_to_intercept
+                    if tti < 10:
+                        tti_color = "#ff4444" if tti < 3 else "#ffaa44"
+                        info += f"TTI:<span style='color:{tti_color};'>{tti:.1f}s</span>  "
+                else:
+                    info += f"Az:<span style='color:#88aacc;'>{t.azimuth_deg:+5.0f}°</span>  "
+
+                # Threat score for non-static
+                if t.classification != ObjectClass.STATIC and t.threat_score > 5:
+                    ts_color = "#ff4444" if t.threat_score > 50 else "#ffaa44" if t.threat_score > 20 else "#888888"
+                    info += f"T:<span style='color:{ts_color};'>{t.threat_score:.0f}</span>"
+
                 info += "<br/>"
             else:
                 info += f"<span style='color:#333344;'>  [---] ─────</span><br/>"
-        
-        if len(state.tracks) > 6:
-            info += f"<span style='color:#666677;'>  ... and {len(state.tracks) - 6} more</span><br/>"
-        
+
+        if len(state.tracks) > 5:
+            info += f"<span style='color:#666677;'>  ... and {len(state.tracks) - 5} more</span><br/>"
+
         self.info_label.setText(info)
     
     def _update_info_no_data(self):

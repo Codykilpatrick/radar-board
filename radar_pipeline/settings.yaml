@@ -36,20 +36,25 @@ association:
 # Track Lifecycle
 # -----------------------------------------------------------------------------
 # Controls when tracks appear, persist, and disappear
+#
+# MODE: Fast Acquisition (CIWS-style)
+# For instant target acquisition, use: initial_confidence >= min_confidence
+# This displays tracks immediately on first detection.
+#
 tracking:
   # Confirmation before display
-  min_hits: 3           # Require N consecutive detections before showing track
-                        # Higher = fewer blips, but slower to appear (3-5 recommended)
-  
-  # Confidence thresholds
+  min_hits: 1           # Require N consecutive detections before showing track
+                        # 1 = instant, 3-5 = fewer false tracks but slower
+
+  # Confidence thresholds (tuned for fast acquisition)
   min_confidence: 0.3   # Minimum confidence to DISPLAY a track (0-1)
-  initial_confidence: 0.2  # Starting confidence for new tracks
+  initial_confidence: 0.4  # Starting confidence - set >= min_confidence for instant acq
   confidence_increment: 0.15  # Confidence gained per detection hit
-  confidence_decay: 0.05     # Confidence lost per missed frame (faster decay = less ghost tracks)
-  
+  confidence_decay: 0.08     # Confidence lost per missed frame (faster = less ghost tracks)
+
   # Track deletion
-  max_misses: 15        # Frames without detection before track is deleted
-  
+  max_misses: 10        # Frames without detection before track is deleted
+
   # Static object classification
   static_velocity_threshold: 0.1  # Below this velocity = static (m/s)
   static_frames_required: 20      # Frames at low velocity to classify as static
