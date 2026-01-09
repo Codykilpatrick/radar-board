@@ -13,11 +13,17 @@ This project provides tools for visualizing and tracking objects detected by a T
 Multi-threaded pipeline with Kalman filtering, track management, and 3D visualization.
 
 ```bash
-# Run the pipeline
+# Run with live radar
 python3 -m radar_pipeline.main
 
-# Run visual tests
-python3 radar_pipeline/tests/visual_test.py 1
+# Run with synthetic data (no radar needed)
+python3 -m radar_pipeline.main --source synthetic:crossing
+
+# Playback a recorded session
+python3 -m radar_pipeline.main --source file:recording.jsonl
+
+# Record a session
+python3 -m radar_pipeline.main --record session.jsonl
 ```
 
 See [`radar_pipeline/README.md`](radar_pipeline/README.md) for full documentation.

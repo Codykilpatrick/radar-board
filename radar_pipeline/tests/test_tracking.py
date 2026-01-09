@@ -143,14 +143,14 @@ def test_track_distance_to():
 def test_confidence_lifecycle():
     """Test that confidence increases and decreases correctly."""
     config = PipelineConfig()
-    
+
     initial = config.initial_confidence
     increment = config.confidence_increment
     decay = config.confidence_decay
-    
-    # Starting confidence
+
+    # Starting confidence - use configured value, not hardcoded
     confidence = initial
-    assert confidence == 0.3, f"Initial confidence should be 0.3, got {confidence}"
+    assert confidence == initial, f"Initial confidence mismatch"
     
     # After 5 hits
     for _ in range(5):

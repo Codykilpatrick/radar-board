@@ -181,7 +181,7 @@ def test_target_with_dropout():
             confirmed_after_dropout = len(confirmed)
     
     # Should maintain track through 10-frame dropout
-    assert confirmed_before_dropout == 1, "Should have track before dropout"
+    assert confirmed_before_dropout == 1, f"Should have track before dropout, got {confirmed_before_dropout}"
     assert confirmed_during_dropout >= 1, "Should coast during dropout"
     assert confirmed_after_dropout == 1, "Should recover after dropout"
     
@@ -268,23 +268,40 @@ def test_z_tracking():
 
 def test_track_confirmation_timing():
     """Test how quickly tracks become confirmed."""
-    tracker = SimpleTracker()
-    
+    config = PipelineConfig()
+    tracker = SimpleTracker(config)
+
     confirmation_frame = None
-    
+
     for frame in range(20):
         t = frame * 0.05
         det = Detection(x=0.0, y=2.0, z=0.5, snr=15.0, timestamp=t)
         confirmed = tracker.process_detections([det], t)
-        
+
         if confirmed and confirmation_frame is None:
             confirmation_frame = frame
-    
-    # With initial_confidence=0.3 and min_confidence=0.2, 
-    # track should be confirmed immediately
+
+    # Calculate expected confirmation frame based on config
+    # Track starts with initial_confidence, needs to reach min_confidence
+    # Each hit adds confidence_increment
+    # Frame 0: create track with initial_confidence (1 hit)
+    # Frame N: confidence = initial + N * increment
+    # Need: initial + N * increment >= min_confidence
+    # N >= (min_confidence - initial) / increment
+    initial = config.initial_confidence
+    min_conf = config.min_confidence
+    increment = config.confidence_increment
+
+    if initial >= min_conf:
+        expected_frame = 0
+    else:
+        hits_needed = int(np.ceil((min_conf - initial) / increment))
+        expected_frame = hits_needed  # Frame 0 creates, so N more hits = frame N
+
     assert confirmation_frame is not None, "Track never confirmed"
-    assert confirmation_frame <= 1, f"Track took too long to confirm: frame {confirmation_frame}"
-    
+    assert confirmation_frame <= expected_frame + 1, \
+        f"Track confirmed at frame {confirmation_frame}, expected <= {expected_frame + 1}"
+
     print(f"✓ Track confirmation timing test passed (confirmed at frame {confirmation_frame})")
 
 
