@@ -14,10 +14,13 @@ Data sources:
 """
 
 import sys
+import os
 import queue
 import time
 import signal
 import argparse
+from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from pyqtgraph.Qt import QtWidgets, QtGui
@@ -27,6 +30,7 @@ from .track_manager import TrackManager
 from .render_engine import RenderEngine
 from .data_source import DataSource, LiveDataSource, FileDataSource, SyntheticDataSource
 from .recorder import RecordingDataSource
+from .video_recorder import VideoRecorder, VideoPlayer, check_camera_available
 
 
 class RadarPipeline:
@@ -44,7 +48,9 @@ class RadarPipeline:
                  source_type: str = "live",
                  source_path: Optional[str] = None,
                  record_path: Optional[str] = None,
-                 playback_speed: float = 1.0):
+                 playback_speed: float = 1.0,
+                 record_video: Optional[str] = None,
+                 play_video: Optional[str] = None):
         """
         Initialize the radar pipeline.
 
@@ -54,12 +60,16 @@ class RadarPipeline:
             source_path: Path for file playback, or scenario name for synthetic
             record_path: If provided, record frames to this file
             playback_speed: Playback speed multiplier for file source
+            record_video: If provided, record video to this path (without extension)
+            play_video: If provided, play synchronized video from this path
         """
         self.config = config or DEFAULT_CONFIG
         self.source_type = source_type
         self.source_path = source_path
         self.record_path = record_path
         self.playback_speed = playback_speed
+        self.record_video_path = record_video
+        self.play_video_path = play_video
 
         # Create queues
         self.frame_queue = queue.Queue(maxsize=self.config.frame_queue_size)
@@ -69,6 +79,8 @@ class RadarPipeline:
         self.data_source: Optional[DataSource] = None
         self.track_manager: Optional[TrackManager] = None
         self.render_engine: Optional[RenderEngine] = None
+        self.video_recorder: Optional[VideoRecorder] = None
+        self.video_player: Optional[VideoPlayer] = None
 
         self._running = False
     
@@ -122,6 +134,10 @@ class RadarPipeline:
 
         if self.record_path:
             print(f"Recording to: {self.record_path}")
+        if self.record_video_path:
+            print(f"Recording video to: {self.record_video_path}.mp4")
+        if self.play_video_path:
+            print(f"Playing video from: {self.play_video_path}")
 
         print(f"Range: {self.config.min_range}m - {self.config.max_range}m")
         print(f"FOV: ±{self.config.fov_angle}°")
@@ -144,6 +160,23 @@ class RadarPipeline:
         self.data_source.start()
         self.track_manager.start()
 
+        # Start video recorder if requested
+        if self.record_video_path:
+            if check_camera_available():
+                self.video_recorder = VideoRecorder(self.record_video_path)
+                if not self.video_recorder.start():
+                    print("[Pipeline] Warning: Failed to start video recording")
+                    self.video_recorder = None
+            else:
+                print("[Pipeline] Warning: No camera available for video recording")
+
+        # Initialize video player if requested
+        if self.play_video_path:
+            self.video_player = VideoPlayer(self.play_video_path)
+            if not self.video_player.start():
+                print("[Pipeline] Warning: Failed to load video for playback")
+                self.video_player = None
+
         self._running = True
         print("[Pipeline] Workers started")
         
@@ -161,7 +194,8 @@ class RadarPipeline:
         
         self.render_engine = RenderEngine(
             state_queue=self.state_queue,
-            config=self.config
+            config=self.config,
+            video_player=self.video_player
         )
         self.render_engine.show()
         
@@ -187,6 +221,14 @@ class RadarPipeline:
 
         print("\n[Pipeline] Stopping...")
         self._running = False
+
+        # Stop video recorder/player
+        if self.video_recorder:
+            self.video_recorder.stop()
+            self.video_recorder = None
+        if self.video_player:
+            self.video_player.stop()
+            self.video_player = None
 
         # Signal threads to stop
         if self.data_source:
@@ -218,6 +260,19 @@ class RadarPipeline:
         }
 
         return stats
+
+
+def create_session_directory(base_path: str = "recordings") -> Path:
+    """
+    Create a timestamped session directory for recording.
+
+    Returns:
+        Path to the created session directory
+    """
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    session_dir = Path(base_path) / f"session_{timestamp}"
+    session_dir.mkdir(parents=True, exist_ok=True)
+    return session_dir
 
 
 def parse_source(source_str: str) -> tuple:
@@ -264,8 +319,10 @@ Examples:
     )
     parser.add_argument(
         '--record', '-r',
+        nargs='?',
+        const='auto',
         metavar='PATH',
-        help='Record frames to JSONL file'
+        help='Record session. Creates timestamped dir in recordings/ if no path given.'
     )
     parser.add_argument(
         '--speed',
@@ -277,6 +334,16 @@ Examples:
         '--list-scenarios',
         action='store_true',
         help='List available synthetic scenarios and exit'
+    )
+    parser.add_argument(
+        '--record-video',
+        action='store_true',
+        help='Record video from webcam alongside radar data'
+    )
+    parser.add_argument(
+        '--play-video',
+        metavar='PATH',
+        help='Play synchronized video during playback (path without extension or .mp4)'
     )
 
     args = parser.parse_args()
@@ -295,15 +362,45 @@ Examples:
     # Parse source
     source_type, source_path = parse_source(args.source)
 
-    # Handle Ctrl+C gracefully
-    signal.signal(signal.SIGINT, signal.SIG_DFL)
+    # Handle recording paths
+    record_path = None
+    record_video_path = None
+
+    if args.record:
+        if args.record == 'auto':
+            # Create timestamped session directory
+            session_dir = create_session_directory()
+            record_path = str(session_dir / "radar.jsonl")
+            if args.record_video:
+                record_video_path = str(session_dir / "video")
+            print(f"[Session] Recording to {session_dir}/")
+        elif args.record.endswith('.jsonl'):
+            # Explicit path to JSONL file
+            record_path = args.record
+            if args.record_video:
+                # Put video alongside the JSONL file
+                record_video_path = args.record.replace('.jsonl', '_video')
+        else:
+            # Treat as directory, create if needed
+            session_dir = Path(args.record)
+            session_dir.mkdir(parents=True, exist_ok=True)
+            record_path = str(session_dir / "radar.jsonl")
+            if args.record_video:
+                record_video_path = str(session_dir / "video")
+    elif args.record_video:
+        # Video recording without radar recording - create session dir
+        session_dir = create_session_directory()
+        record_video_path = str(session_dir / "video")
+        print(f"[Session] Recording video to {session_dir}/")
 
     # Create and run pipeline
     pipeline = RadarPipeline(
         source_type=source_type,
         source_path=source_path,
-        record_path=args.record,
-        playback_speed=args.speed
+        record_path=record_path,
+        playback_speed=args.speed,
+        record_video=record_video_path,
+        play_video=args.play_video
     )
     sys.exit(pipeline.start())
 

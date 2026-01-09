@@ -25,6 +25,13 @@ from .data_types import WorldState, Track, StaticObject, ObjectClass
 from .config import PipelineConfig
 from .utils import color_by_range, color_by_classification
 
+# Optional OpenCV for video playback
+try:
+    import cv2
+    CV2_AVAILABLE = True
+except ImportError:
+    CV2_AVAILABLE = False
+
 
 class RenderEngine(QtWidgets.QMainWindow):
     """
@@ -38,23 +45,27 @@ class RenderEngine(QtWidgets.QMainWindow):
     - Info panel with track details
     """
     
-    def __init__(self, 
+    def __init__(self,
                  state_queue: queue.Queue,
-                 config: PipelineConfig):
+                 config: PipelineConfig,
+                 video_player=None):
         """
         Initialize the render engine.
-        
+
         Args:
             state_queue: Queue to consume WorldState from
             config: Pipeline configuration
+            video_player: Optional VideoPlayer for synchronized video display
         """
         super().__init__()
-        
+
         self.state_queue = state_queue
         self.config = config
-        
+        self.video_player = video_player
+
         self._last_state: Optional[WorldState] = None
         self._fps_times = deque(maxlen=30)
+        self._video_window_created = False
         
         # Dynamic visualization items that get updated
         self._vert_lines = []
@@ -221,9 +232,12 @@ class RenderEngine(QtWidgets.QMainWindow):
         
         # Render static objects
         self._render_static_objects(latest_state.static_objects)
-        
+
         # Update info panel
         self._update_info(latest_state)
+
+        # Update video playback if available
+        self._update_video(latest_state.timestamp)
     
     def _clear_dynamic_elements(self):
         """Remove dynamic visualization elements."""
@@ -502,8 +516,26 @@ class RenderEngine(QtWidgets.QMainWindow):
             info += f"<span style='color:#333344;'>  [---] ─────</span><br/>"
         self.info_label.setText(info)
     
+    def _update_video(self, timestamp: float):
+        """Update video playback window if available."""
+        if not self.video_player or not CV2_AVAILABLE:
+            return
+
+        frame = self.video_player.get_frame_at(timestamp)
+        if frame is not None:
+            if not self._video_window_created:
+                cv2.namedWindow("Radar Video", cv2.WINDOW_NORMAL)
+                cv2.resizeWindow("Radar Video", 640, 480)
+                self._video_window_created = True
+
+            cv2.imshow("Radar Video", frame)
+            cv2.waitKey(1)  # Required for OpenCV to process window events
+
     def closeEvent(self, event):
         """Handle window close event."""
         self.timer.stop()
+        # Close OpenCV window if it was created
+        if self._video_window_created and CV2_AVAILABLE:
+            cv2.destroyAllWindows()
         event.accept()
 

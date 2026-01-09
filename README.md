@@ -67,6 +67,30 @@ python3 visualize_radar_3d.py
 - **Connection**: USB serial at 921600 baud
 - **Default Port**: `/dev/tty.usbserial-00ED1D3E1` (macOS)
 
+## Recording & Playback
+
+Record radar data and synchronized video for later analysis:
+
+```bash
+# Record a session (creates timestamped directory in recordings/)
+python3 -m radar_pipeline.main --record
+
+# Record with video from webcam
+python3 -m radar_pipeline.main --record --record-video
+
+# Playback a recorded session
+python3 -m radar_pipeline.main --source file:recordings/session_20240115_143022/radar.jsonl
+
+# Playback with synchronized video
+python3 -m radar_pipeline.main --source file:recordings/session_20240115_143022/radar.jsonl \
+    --play-video recordings/session_20240115_143022/video
+```
+
+Each recording session creates a directory with:
+- `radar.jsonl` - Radar detections with timestamps
+- `video.mp4` - Webcam video (if `--record-video` used)
+- `video_timestamps.json` - Frame timestamps for sync
+
 ## Offline Development
 
 Develop and test without physical radar hardware:
@@ -81,11 +105,11 @@ python3 -m radar_pipeline.main --source synthetic:dropout    # Test track coasti
 python3 -m radar_pipeline.main --source synthetic:clutter    # Static + moving
 
 # Record synthetic data for reproducible testing
-python3 -m radar_pipeline.main --source synthetic:crossing --record test.jsonl
+python3 -m radar_pipeline.main --source synthetic:crossing --record
 
 # Playback at different speeds
-python3 -m radar_pipeline.main --source file:test.jsonl --speed 0.5  # Half speed
-python3 -m radar_pipeline.main --source file:test.jsonl --speed 2.0  # Double speed
+python3 -m radar_pipeline.main --source file:recordings/session_.../radar.jsonl --speed 0.5
+python3 -m radar_pipeline.main --source file:recordings/session_.../radar.jsonl --speed 2.0
 ```
 
 ## Testing
@@ -135,8 +159,10 @@ radar-board/
 - **3D Point Cloud Visualization**: Real-time display of radar detections
 - **Kalman Filtering**: Smooth position and velocity estimation
 - **Track Management**: Persistent object tracking with coasting through dropouts
+- **Threat Assessment**: Closing velocity, time-to-intercept, and threat scoring
 - **Static/Dynamic Classification**: Automatic classification of stationary vs moving objects
 - **Multi-threaded Architecture**: Serial reading doesn't block visualization
+- **Synchronized Video Recording**: Record webcam alongside radar for ground truth
 - **Offline Development**: Synthetic data generation and session recording/playback
 - **Multiple Data Sources**: Live radar, recorded files, or synthetic patterns
 

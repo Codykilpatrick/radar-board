@@ -33,9 +33,10 @@ from .data_source import (
 )
 from .recorder import FrameRecorder, RecordingDataSource
 from .scenarios import SCENARIOS, list_scenarios
+from .video_recorder import VideoRecorder, VideoPlayer
 from .main import RadarPipeline
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 __all__ = [
     # Data types
     "ObjectClass",
@@ -59,6 +60,9 @@ __all__ = [
     # Recording
     "FrameRecorder",
     "RecordingDataSource",
+    # Video
+    "VideoRecorder",
+    "VideoPlayer",
     # Scenarios
     "SCENARIOS",
     "list_scenarios",
