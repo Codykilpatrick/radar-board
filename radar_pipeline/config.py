@@ -54,6 +54,13 @@ class PipelineConfig:
     grid_enabled: bool = False
     grid_resolution: float = 0.1  # meters per cell
     grid_size: Tuple[int, int] = (100, 100)  # cells (10m x 10m)
+
+    # Background subtraction
+    bg_enabled: bool = True  # Enable background filtering if model exists
+    bg_model_path: str = "background.npz"  # Path to background model file
+    bg_resolution: float = 0.1  # Voxel size in meters (10cm default)
+    bg_min_hits: int = 3  # Min detections per cell to mark as background
+    bg_learning_duration: float = 10.0  # Seconds to learn when using --learn-background
     
     # Queue sizes
     raw_queue_size: int = 100
@@ -152,7 +159,15 @@ def load_yaml_config(yaml_path: Optional[str] = None) -> PipelineConfig:
         if 'debug' in data:
             config_dict['debug_tracking'] = data['debug'].get('tracking', PipelineConfig.debug_tracking)
             config_dict['debug_detections'] = data['debug'].get('detections', PipelineConfig.debug_detections)
-        
+
+        # Background subtraction
+        if 'background' in data:
+            config_dict['bg_enabled'] = data['background'].get('enabled', PipelineConfig.bg_enabled)
+            config_dict['bg_model_path'] = data['background'].get('model_path', PipelineConfig.bg_model_path)
+            config_dict['bg_resolution'] = data['background'].get('resolution', PipelineConfig.bg_resolution)
+            config_dict['bg_min_hits'] = data['background'].get('min_hits', PipelineConfig.bg_min_hits)
+            config_dict['bg_learning_duration'] = data['background'].get('learning_duration', PipelineConfig.bg_learning_duration)
+
         print(f"[Config] Loaded settings from {yaml_path}")
         return PipelineConfig(**config_dict)
         

@@ -28,9 +28,9 @@ filtering:
 # -----------------------------------------------------------------------------
 # How detections are matched to existing tracks
 association:
-  gate: 0.75            # Max distance to associate detection with track (meters)
+  gate: 1.0             # Max distance to associate detection with track (meters)
                         # Smaller = fewer false tracks, but may lose fast-moving targets
-                        # Recommended: 0.5-0.75 for walking, 1.0 for running
+                        # Recommended: 0.5-0.75 for walking, 1.0-1.5 for running/drones
 
 # -----------------------------------------------------------------------------
 # Track Lifecycle
@@ -46,11 +46,11 @@ tracking:
   min_hits: 1           # Require N consecutive detections before showing track
                         # 1 = instant, 2 = balanced, 3-5 = fewer false tracks but slower
 
-  # Confidence thresholds (tuned for fast acquisition)
-  min_confidence: 0.3   # Minimum confidence to DISPLAY a track (0-1)
+  # Confidence thresholds (tuned for smooth tracking through dropouts)
+  min_confidence: 0.2   # Minimum confidence to DISPLAY a track (0-1)
   initial_confidence: 0.4  # Starting confidence - set >= min_confidence for instant acq
   confidence_increment: 0.15  # Confidence gained per detection hit
-  confidence_decay: 0.08     # Confidence lost per missed frame (faster = less ghost tracks)
+  confidence_decay: 0.04     # Confidence lost per missed frame (lower = smoother coasting)
 
   # Track deletion
   max_misses: 10        # Frames without detection before track is deleted
@@ -83,6 +83,18 @@ occupancy_grid:
   enabled: false        # Set to true to enable ground-plane obstacle map
   resolution: 0.1       # Meters per cell
   size: [100, 100]      # Grid dimensions in cells
+
+# -----------------------------------------------------------------------------
+# Background Subtraction
+# -----------------------------------------------------------------------------
+# Learn and filter static environment (walls, floor, furniture)
+# Enables detection of NEW stationary objects (drones, people)
+background:
+  enabled: true         # Enable background filtering if model file exists
+  model_path: "background.npz"  # Path to background model file
+  resolution: 0.1       # Voxel size in meters (10cm = good balance)
+  min_hits: 3           # Min detections per cell to mark as background
+  learning_duration: 10.0  # Seconds to learn with --learn-background
 
 # -----------------------------------------------------------------------------
 # Debug Output

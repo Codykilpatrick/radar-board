@@ -14,10 +14,13 @@ import queue
 import struct
 import time
 import numpy as np
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 
 from .data_types import RawFrame, Detection
 from .config import PipelineConfig
+
+if TYPE_CHECKING:
+    from .background import BackgroundModel
 
 
 class FrameParser(threading.Thread):
@@ -31,27 +34,31 @@ class FrameParser(threading.Thread):
     def __init__(self,
                  input_queue: queue.Queue,
                  output_queue: queue.Queue,
-                 config: PipelineConfig):
+                 config: PipelineConfig,
+                 background_model: Optional['BackgroundModel'] = None):
         """
         Initialize the frame parser thread.
-        
+
         Args:
             input_queue: Queue to consume RawFrame objects from
             output_queue: Queue to push List[Detection] to
             config: Pipeline configuration
+            background_model: Optional background model for clutter filtering
         """
         super().__init__(daemon=True, name="FrameParser")
-        
+
         self.input_queue = input_queue
         self.output_queue = output_queue
         self.config = config
-        
+        self.background_model = background_model
+
         self._stop_event = threading.Event()
-        
+
         # Stats
         self._frames_parsed = 0
         self._detections_total = 0
         self._detections_filtered = 0
+        self._bg_filtered = 0
         
     def run(self):
         """Main thread loop - consumes raw frames and parses them."""
@@ -188,7 +195,12 @@ class FrameParser(threading.Thread):
             if snr < min_snr:
                 self._detections_filtered += 1
                 continue
-            
+
+            # Background filter
+            if self.background_model and self.background_model.is_background(x, y, z):
+                self._bg_filtered += 1
+                continue
+
             # Passed all filters
             detection = Detection(
                 x=x,
@@ -224,5 +236,6 @@ class FrameParser(threading.Thread):
             'frames_parsed': self._frames_parsed,
             'detections_total': self._detections_total,
             'detections_filtered': self._detections_filtered,
+            'bg_filtered': self._bg_filtered,
         }
 

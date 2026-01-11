@@ -18,6 +18,10 @@ from pathlib import Path
 from .data_types import Detection
 from .config import PipelineConfig
 
+# Avoid circular imports
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .background import BackgroundModel
 
 # Frame type: (frame_number, timestamp, List[Detection])
 FrameData = Tuple[int, float, List[Detection]]
@@ -75,8 +79,12 @@ class LiveDataSource(DataSource):
     real radar data through the DataSource interface.
     """
 
-    def __init__(self, output_queue: queue.Queue, config: PipelineConfig):
+    def __init__(self,
+                 output_queue: queue.Queue,
+                 config: PipelineConfig,
+                 background_model: Optional['BackgroundModel'] = None):
         super().__init__(output_queue, config)
+        self.background_model = background_model
 
         # Internal queue between serial reader and frame parser
         self._raw_queue: Optional[queue.Queue] = None
@@ -100,12 +108,16 @@ class LiveDataSource(DataSource):
         self._frame_parser = FrameParser(
             input_queue=self._raw_queue,
             output_queue=self.output_queue,
-            config=self.config
+            config=self.config,
+            background_model=self.background_model
         )
 
         self._serial_reader.start()
         self._frame_parser.start()
-        print("[LiveDataSource] Started")
+        if self.background_model:
+            print("[LiveDataSource] Started (with background filtering)")
+        else:
+            print("[LiveDataSource] Started")
 
     def stop(self):
         """Stop serial reader and frame parser threads."""
@@ -149,6 +161,7 @@ class FileDataSource(DataSource):
         - Configurable playback speed
         - Loop at end of file
         - Real-time pacing based on timestamps
+        - Background filtering
     """
 
     def __init__(self,
@@ -156,7 +169,8 @@ class FileDataSource(DataSource):
                  config: PipelineConfig,
                  file_path: str,
                  speed: float = 1.0,
-                 loop: bool = True):
+                 loop: bool = True,
+                 background_model: Optional['BackgroundModel'] = None):
         """
         Initialize file data source.
 
@@ -166,16 +180,19 @@ class FileDataSource(DataSource):
             file_path: Path to JSONL file
             speed: Playback speed multiplier (1.0 = real-time)
             loop: Whether to loop at end of file
+            background_model: Optional background model for filtering
         """
         super().__init__(output_queue, config)
         self.file_path = Path(file_path)
         self.speed = speed
         self.loop = loop
+        self.background_model = background_model
 
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         self._frames_played = 0
         self._loop_count = 0
+        self._bg_filtered = 0
 
     def start(self):
         """Start playback thread."""
@@ -241,13 +258,20 @@ class FileDataSource(DataSource):
                 timestamp = frame_data.get('ts', 0.0)
                 raw_detections = frame_data.get('detections', [])
 
-                # Convert to Detection objects
+                # Convert to Detection objects (with optional background filtering)
                 detections = []
                 for d in raw_detections:
+                    x, y, z = d.get('x', 0.0), d.get('y', 0.0), d.get('z', 0.0)
+
+                    # Background filter
+                    if self.background_model and self.background_model.is_background(x, y, z):
+                        self._bg_filtered += 1
+                        continue
+
                     det = Detection(
-                        x=d.get('x', 0.0),
-                        y=d.get('y', 0.0),
-                        z=d.get('z', 0.0),
+                        x=x,
+                        y=y,
+                        z=z,
                         snr=d.get('snr', 0.0),
                         timestamp=timestamp
                     )
@@ -287,6 +311,7 @@ class FileDataSource(DataSource):
             'frames_played': self._frames_played,
             'loop_count': self._loop_count,
             'speed': self.speed,
+            'bg_filtered': self._bg_filtered,
         }
 
 
@@ -302,7 +327,8 @@ class SyntheticDataSource(DataSource):
                  output_queue: queue.Queue,
                  config: PipelineConfig,
                  scenario: str = "forward",
-                 frame_rate: float = 20.0):
+                 frame_rate: float = 20.0,
+                 background_model: Optional['BackgroundModel'] = None):
         """
         Initialize synthetic data source.
 
@@ -311,14 +337,17 @@ class SyntheticDataSource(DataSource):
             config: Pipeline configuration
             scenario: Name of scenario to run (see list_scenarios())
             frame_rate: Frames per second to generate
+            background_model: Optional background model for filtering
         """
         super().__init__(output_queue, config)
         self.scenario = scenario
         self.frame_rate = frame_rate
+        self.background_model = background_model
 
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         self._frame_count = 0
+        self._bg_filtered = 0
 
     @staticmethod
     def list_scenarios() -> List[str]:
@@ -368,6 +397,16 @@ class SyntheticDataSource(DataSource):
             # Generate detections for this frame
             detections = generator.generate(t)
 
+            # Apply background filtering if enabled
+            if self.background_model:
+                filtered = []
+                for det in detections:
+                    if self.background_model.is_background(det.x, det.y, det.z):
+                        self._bg_filtered += 1
+                    else:
+                        filtered.append(det)
+                detections = filtered
+
             # Push to queue
             try:
                 self.output_queue.put_nowait((self._frame_count, t, detections))
@@ -386,4 +425,5 @@ class SyntheticDataSource(DataSource):
             'scenario': self.scenario,
             'frames_generated': self._frame_count,
             'frame_rate': self.frame_rate,
+            'bg_filtered': self._bg_filtered,
         }

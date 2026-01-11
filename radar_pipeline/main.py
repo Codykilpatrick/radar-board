@@ -31,6 +31,7 @@ from .render_engine import RenderEngine
 from .data_source import DataSource, LiveDataSource, FileDataSource, SyntheticDataSource
 from .recorder import RecordingDataSource
 from .video_recorder import VideoRecorder, VideoPlayer, check_camera_available
+from .background import BackgroundModel
 
 
 class RadarPipeline:
@@ -50,7 +51,8 @@ class RadarPipeline:
                  record_path: Optional[str] = None,
                  playback_speed: float = 1.0,
                  record_video: Optional[str] = None,
-                 play_video: Optional[str] = None):
+                 play_video: Optional[str] = None,
+                 background_model: Optional[BackgroundModel] = None):
         """
         Initialize the radar pipeline.
 
@@ -62,6 +64,7 @@ class RadarPipeline:
             playback_speed: Playback speed multiplier for file source
             record_video: If provided, record video to this path (without extension)
             play_video: If provided, play synchronized video from this path
+            background_model: Optional background model for clutter filtering
         """
         self.config = config or DEFAULT_CONFIG
         self.source_type = source_type
@@ -70,6 +73,7 @@ class RadarPipeline:
         self.playback_speed = playback_speed
         self.record_video_path = record_video
         self.play_video_path = play_video
+        self.background_model = background_model
 
         # Create queues
         self.frame_queue = queue.Queue(maxsize=self.config.frame_queue_size)
@@ -87,7 +91,11 @@ class RadarPipeline:
     def _create_data_source(self) -> DataSource:
         """Create the appropriate data source based on configuration."""
         if self.source_type == "live":
-            source = LiveDataSource(self.frame_queue, self.config)
+            source = LiveDataSource(
+                self.frame_queue,
+                self.config,
+                background_model=self.background_model
+            )
         elif self.source_type == "file":
             if not self.source_path:
                 raise ValueError("File source requires a path")
@@ -96,14 +104,16 @@ class RadarPipeline:
                 self.config,
                 file_path=self.source_path,
                 speed=self.playback_speed,
-                loop=True
+                loop=True,
+                background_model=self.background_model
             )
         elif self.source_type == "synthetic":
             scenario = self.source_path or "forward"
             source = SyntheticDataSource(
                 self.frame_queue,
                 self.config,
-                scenario=scenario
+                scenario=scenario,
+                background_model=self.background_model
             )
         else:
             raise ValueError(f"Unknown source type: {self.source_type}")
@@ -138,6 +148,9 @@ class RadarPipeline:
             print(f"Recording video to: {self.record_video_path}.mp4")
         if self.play_video_path:
             print(f"Playing video from: {self.play_video_path}")
+        if self.background_model:
+            stats = self.background_model.get_stats()
+            print(f"Background filter: {stats['background_cells']} cells ({stats['background_pct']:.1f}% of volume)")
 
         print(f"Range: {self.config.min_range}m - {self.config.max_range}m")
         print(f"FOV: ±{self.config.fov_angle}°")
@@ -297,6 +310,120 @@ def parse_source(source_str: str) -> tuple:
         return ("live", None)
 
 
+def learn_background_mode(source_type: str,
+                          source_path: Optional[str],
+                          duration: float,
+                          model_path: str) -> int:
+    """
+    Run background learning mode.
+
+    Collects detections for the specified duration, builds a background model,
+    and saves it to disk.
+
+    Args:
+        source_type: Data source type
+        source_path: Source path (for file/synthetic)
+        duration: Learning duration in seconds
+        model_path: Path to save the model
+
+    Returns:
+        Exit code (0 = success)
+    """
+    print("=" * 60)
+    print("Background Learning Mode")
+    print("=" * 60)
+    print(f"Duration: {duration} seconds")
+    print(f"Output: {model_path}")
+    print("=" * 60)
+    print("Make sure the scene contains ONLY static objects (walls, floor, furniture)")
+    print("Do NOT have any people or objects you want to detect in view")
+    print("=" * 60)
+
+    # Create background model
+    config = DEFAULT_CONFIG
+    model = BackgroundModel(
+        resolution=config.bg_resolution,
+        x_range=(-config.max_range, config.max_range),
+        y_range=(0, config.max_range),
+        z_range=(-2.0, 3.0)  # -2m to +3m height
+    )
+
+    # Create queue and data source (no background filtering during learning)
+    frame_queue = queue.Queue(maxsize=config.frame_queue_size)
+
+    if source_type == "live":
+        source = LiveDataSource(frame_queue, config)
+    elif source_type == "file":
+        source = FileDataSource(
+            frame_queue, config,
+            file_path=source_path,
+            speed=1.0,
+            loop=False
+        )
+    elif source_type == "synthetic":
+        source = SyntheticDataSource(
+            frame_queue, config,
+            scenario=source_path or "forward"
+        )
+    else:
+        print(f"Error: Unknown source type '{source_type}'")
+        return 1
+
+    # Start data source
+    source.start()
+    print(f"\n[Learning] Started collecting detections...")
+
+    start_time = time.time()
+    frame_count = 0
+    detection_count = 0
+
+    try:
+        while time.time() - start_time < duration:
+            try:
+                frame_num, timestamp, detections = frame_queue.get(timeout=0.1)
+                frame_count += 1
+
+                # Add all detections to background model
+                for det in detections:
+                    model.add_detection(det.x, det.y, det.z)
+                    detection_count += 1
+
+                # Progress update every 50 frames
+                if frame_count % 50 == 0:
+                    elapsed = time.time() - start_time
+                    remaining = duration - elapsed
+                    print(f"[Learning] {elapsed:.1f}s elapsed, {remaining:.1f}s remaining, "
+                          f"{frame_count} frames, {detection_count} detections")
+
+            except queue.Empty:
+                continue
+
+    except KeyboardInterrupt:
+        print("\n[Learning] Interrupted by user")
+
+    finally:
+        source.stop()
+
+    # Finalize and save
+    print(f"\n[Learning] Collected {detection_count} detections from {frame_count} frames")
+
+    if detection_count == 0:
+        print("[Learning] Error: No detections collected. Check radar connection.")
+        return 1
+
+    model.finalize(min_hits=config.bg_min_hits)
+    model.save(model_path)
+
+    print("\n" + "=" * 60)
+    print("Background learning complete!")
+    print(f"Model saved to: {model_path}")
+    print("Run normally to use background filtering:")
+    print(f"  python3 -m radar_pipeline.main")
+    print("=" * 60)
+
+    return 0
+
+
 def main():
     """Entry point for the radar pipeline."""
     parser = argparse.ArgumentParser(
@@ -308,7 +435,11 @@ Examples:
   %(prog)s --source synthetic:crossing  # Synthetic test pattern
   %(prog)s --source file:recording.jsonl # Playback recording
   %(prog)s --record session.jsonl       # Record live session
-  %(prog)s --source synthetic:multi --record test.jsonl  # Record synthetic
+
+Background Learning (for stationary object detection):
+  %(prog)s --learn-background 10        # Learn background for 10 seconds
+  %(prog)s                              # Run with background filtering
+  %(prog)s --no-background              # Run without background filtering
         """
     )
 
@@ -344,6 +475,22 @@ Examples:
         '--play-video',
         metavar='PATH',
         help='Play synchronized video during playback (path without extension or .mp4)'
+    )
+    parser.add_argument(
+        '--learn-background',
+        type=float,
+        metavar='SECONDS',
+        help='Learn background for N seconds, save model, and exit'
+    )
+    parser.add_argument(
+        '--no-background',
+        action='store_true',
+        help='Disable background filtering even if model exists'
+    )
+    parser.add_argument(
+        '--bg-model',
+        metavar='PATH',
+        help='Path to background model file (default: background.npz)'
     )
 
     args = parser.parse_args()
@@ -393,6 +540,27 @@ Examples:
         record_video_path = str(session_dir / "video")
         print(f"[Session] Recording video to {session_dir}/")
 
+    # Determine background model path
+    bg_model_path = args.bg_model or DEFAULT_CONFIG.bg_model_path
+
+    # Handle --learn-background mode
+    if args.learn_background:
+        return learn_background_mode(
+            source_type=source_type,
+            source_path=source_path,
+            duration=args.learn_background,
+            model_path=bg_model_path
+        )
+
+    # Load background model for normal operation
+    background_model = None
+    if not args.no_background and DEFAULT_CONFIG.bg_enabled:
+        if BackgroundModel.exists(bg_model_path):
+            try:
+                background_model = BackgroundModel.load(bg_model_path)
+            except Exception as e:
+                print(f"[Background] Warning: Failed to load model: {e}")
+
     # Create and run pipeline
     pipeline = RadarPipeline(
         source_type=source_type,
@@ -400,7 +568,8 @@ Examples:
         record_path=record_path,
         playback_speed=args.speed,
         record_video=record_video_path,
-        play_video=args.play_video
+        play_video=args.play_video,
+        background_model=background_model
     )
     sys.exit(pipeline.start())
 
