@@ -103,6 +103,36 @@ Each recording session creates a directory with:
 - `video.mp4` - Webcam video (if `--record-video` used)
 - `video_timestamps.json` - Frame timestamps for sync
 
+## Background Subtraction (Stationary Object Detection)
+
+Detect stationary objects like hovering drones or standing people by learning and filtering out static environment clutter.
+
+```bash
+# Step 1: Learn the background (room should be empty of targets)
+# Use profile_nofilter.cfg for stationary object detection
+python3 send_config.py profile_nofilter.cfg
+python3 -m radar_pipeline.main --learn-background 10
+
+# Step 2: Run with background filtering enabled
+python3 -m radar_pipeline.main
+
+# Run without background filtering
+python3 -m radar_pipeline.main --no-background
+
+# Use a custom background model path
+python3 -m radar_pipeline.main --bg-model /path/to/model.npz
+```
+
+The background model is saved to `background.npz` and automatically loaded on subsequent runs. Configure in `settings.yaml`:
+
+```yaml
+background:
+  enabled: true
+  model_path: "background.npz"
+  resolution: 0.1       # 10cm voxel size
+  min_hits: 3           # Detections per cell to mark as background
+```
+
 ## Offline Development
 
 Develop and test without physical radar hardware:
@@ -154,9 +184,11 @@ radar-board/
     ├── README.md                # Pipeline documentation
     ├── main.py                  # Entry point with CLI
     ├── config.py                # Configuration
+    ├── settings.yaml            # Runtime configuration
     ├── data_source.py           # Data source abstraction
     ├── recorder.py              # JSONL recording
     ├── video_recorder.py        # Synchronized video recording
+    ├── background.py            # Background subtraction model
     ├── scenarios.py             # Synthetic test scenarios
     ├── metrics.py               # Tracking performance metrics
     ├── serial_reader.py         # Serial reader thread
@@ -176,6 +208,7 @@ radar-board/
 - **3D Point Cloud Visualization**: Real-time display of radar detections
 - **Kalman Filtering**: Smooth position and velocity estimation
 - **Track Management**: Persistent object tracking with coasting through dropouts
+- **Background Subtraction**: Learn static environment to detect new stationary objects
 - **Threat Assessment**: Closing velocity, time-to-intercept, and threat scoring
 - **Static/Dynamic Classification**: Automatic classification of stationary vs moving objects
 - **Multi-threaded Architecture**: Serial reading doesn't block visualization
